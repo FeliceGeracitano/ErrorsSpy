@@ -1,0 +1,16 @@
+{
+  "name": "Error Spy",
+  "description": "Track console & Network issue and dowload their report files.",
+  "version": "0.1",
+  "permissions": [
+    "debugger"
+  ],
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "browser_action": {
+    "default_icon": "icon.png",
+    "default_title": "Log Tracker"
+  },
+  "manifest_version": 2
+}
