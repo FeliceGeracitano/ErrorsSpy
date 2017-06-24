@@ -5,7 +5,7 @@ var debuggersId = [];
 var logsByTab = {};
 const CONSOLE_LEVELS = ['error'];
 const NETWORK_LEVEL = 400;
-const report = {
+const getScheletonReport = () => ({
   log: {
     version: '1.2',
     creator: {
@@ -25,7 +25,7 @@ const report = {
     ],
     entries: []
   }
-};
+});
 
 const URLToArray = url => {
   var request = [];
@@ -42,54 +42,53 @@ const URLToArray = url => {
 };
 
 const mapEntry = ({ request, response }) => ({
-    startedDateTime: new Date(epoch + request.timestamp).toISOString(),
-    time: response.timestamp - request.timestamp,
-    request: {
-      method: request.method,
-      url: request.url,
-      httpVersion: response.protocol,
-      cookies: [],
-      headers: Object.keys(request.headers).map(key => ({
-        name: key,
-        value: request.headers[key]
-      })),
-      queryString: request.url.indexOf('?') > -1 ? URLToArray(request.url) : [],
-      headersSize: 50,
-      bodySize: -1,
-      postData: {
-        mimeType: request.headers['Content-Type'],
-        text: request.postData,
-        params: request.postData ? URLToArray(request.postData) : undefined
-      }
-    },
-    response: {
-      status: response.status,
-      statusText: response.statusText,
-      httpVersion: response.protocol,
-      cookies: [],
-      headers: Object.keys(response.headers).map(key => ({
-        name: key,
-        value: response.headers[key]
-      })),
-      content: {
-        size: response.encodedDataLength,
-        mimeType: response.mimeType,
-        text: response.statusText + '\n\n' + response.headersText
-      },
-      headersSize: 50,
-      redirectURL: '',
-      bodySize: response.encodedDataLength
-    },
-    cache: {},
-    timings: {
-      dns: response.dnsEnd - response.dnsStart,
-      connect: response.connectEnd - response.connectStart,
-      blocked: 0,
-      send: request.sendEnd - response.sendStart,
-      wait: response.requestTime,
-      receive: response.receiveHeadersEnd
+  startedDateTime: new Date(epoch + request.timestamp).toISOString(),
+  time: response.timestamp - request.timestamp,
+  request: {
+    method: request.method,
+    url: request.url,
+    httpVersion: response.protocol,
+    cookies: [],
+    headers: Object.keys(request.headers).map(key => ({
+      name: key,
+      value: request.headers[key]
+    })),
+    queryString: request.url.indexOf('?') > -1 ? URLToArray(request.url) : [],
+    headersSize: 50,
+    bodySize: -1,
+    postData: {
+      mimeType: request.headers['Content-Type'],
+      text: request.postData,
+      params: request.postData ? URLToArray(request.postData) : undefined
     }
-  };
+  },
+  response: {
+    status: response.status,
+    statusText: response.statusText,
+    httpVersion: response.protocol,
+    cookies: [],
+    headers: Object.keys(response.headers).map(key => ({
+      name: key,
+      value: response.headers[key]
+    })),
+    content: {
+      size: response.encodedDataLength,
+      mimeType: response.mimeType,
+      text: response.statusText + '\n\n' + response.headersText
+    },
+    headersSize: 50,
+    redirectURL: '',
+    bodySize: response.encodedDataLength
+  },
+  cache: {},
+  timings: {
+    dns: response.dnsEnd - response.dnsStart,
+    connect: response.connectEnd - response.connectStart,
+    blocked: 0,
+    send: request.sendEnd - response.sendStart,
+    wait: response.requestTime,
+    receive: response.receiveHeadersEnd
+  }
 });
 
 const handleConsoleMessage = (tabId, message) => {
@@ -125,6 +124,7 @@ const handleNetworkMessage = (tabId, message, params) => {
 
 const onDebugEvent = (debuggeeId, message, params) => {
   // only 1 event for console
+  debugger;
   if (message === 'Console.messageAdded') {
     handleConsoleMessage(debuggeeId.tabId, params.message);
   } else {
@@ -133,6 +133,7 @@ const onDebugEvent = (debuggeeId, message, params) => {
 };
 
 const onDebuggerAttach = tabId => {
+  chrome.browserAction.setIcon({ path: 'icon.red.png' });
   logsByTab[tabId] = {
     console: [],
     network: {}
@@ -183,35 +184,61 @@ const downloadReport = (data, filename, type) => {
 };
 
 const downloadConsoleReport = tabId => {
+  if (logsByTab[tabId].console.length === 0) {
+    return; // do not download empty content
+  }
   let consoleData = '"LEVEL","MESSAGE","SOURCE"\n \n';
   logsByTab[tabId].console.forEach(element => {
     consoleData += `"${element.level}","${element.text}","${element.url}"\n`;
   });
-  downloadReport(consoleData, 'console.timestamp.csv', 'csv');
+
+  downloadReport(consoleData, `console.${new Date().toISOString()}.csv`, 'csv');
 };
 
 const downloadHARReport = tabId => {
   const keys = Object.keys(logsByTab[tabId].network);
+  const report = getScheletonReport();
   keys.forEach(key => {
     const element = logsByTab[tabId].network[key];
     if (element.response && element.response.status >= NETWORK_LEVEL) {
       report.log.entries.push(mapEntry(element));
     }
   });
-  downloadReport(JSON.stringify(report, undefined, 2), 'network.timestamp.har', 'har');
+  if (report.log.entries.length === 0) {
+    return; // do not download empty content
+  }
+  downloadReport(
+    JSON.stringify(report, undefined, 2),
+    `network.${new Date().toISOString()}.har`,
+    'har'
+  );
 };
 
 const onDebuggerDetach = (tab, reason) => {
+  chrome.browserAction.setIcon({ path: 'icon.green.png' });
   const tabId = typeof tab === 'number' ? tab : tab.tabId;
   debuggersId = debuggersId.filter(el => el !== tabId);
   if (reason !== chrome.debugger.DetachReason.CANCELED_BY_USER) {
     downloadConsoleReport(tabId);
     downloadHARReport(tabId);
   }
+  chrome.debugger.sendCommand(
+    {
+      tabId: tabId
+    },
+    'Network.disable'
+  );
+  chrome.debugger.sendCommand(
+    {
+      tabId: tabId
+    },
+    'Console.disable'
+  );
+  logsByTab[tabId] = undefined;
 };
 
 const onUserAction = tab => {
-  if (debuggersId.indexOf(tab.id) < 0) {
+  if (!logsByTab[tab.id]) {
     chrome.debugger.attach(
       {
         tabId: tab.id
