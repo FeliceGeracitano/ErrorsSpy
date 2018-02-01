@@ -4,7 +4,7 @@ let offset = 0;
 var debuggersId = [];
 var logsByTab = {};
 const CONSOLE_LEVELS = ['error'];
-const NETWORK_LEVEL = 400;
+const NETWORK_LEVEL = 199;
 const getScheletonReport = () => ({
   log: {
     version: '1.2',
