@@ -1,10 +1,8 @@
 {
   "name": "ErrorsSpy",
   "description": "Track console & network issues and download their report files.",
-  "version": "0.2",
-  "permissions": [
-    "debugger"
-  ],
+  "version": "0.3",
+  "permissions": ["debugger"],
   "background": {
     "scripts": ["background.js"]
   },

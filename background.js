@@ -72,11 +72,12 @@ const mapEntry = ({ request, response }) => ({
       value: response.headers[key]
     })),
     content: {
+      base64Encoded: response.base64Encoded,
+      body: response.body,
       size: response.encodedDataLength,
       mimeType: response.mimeType,
-      text: response.statusText + '\n\n' + response.headersText
+      text: response.body + '\n\n' + response.statusText + '\n\n' + response.headersText
     },
-    headersSize: 50,
     redirectURL: '',
     bodySize: response.encodedDataLength
   },
@@ -109,26 +110,33 @@ const handleRequestWillBeSent = (tabId, params) => {
 
 const handleResponseReceived = (tabId, params) => {
   const log = logsByTab[tabId];
-  log.network[params.requestId].response = Object.assign({}, params.response, {
-    timestamp: params.timestamp
+  const requestId = params.requestId;
+  const timestamp = params.timestamp;
+  const response = params.response;
+  let currentData = log.network[params.requestId] || {};
+  chrome.debugger.sendCommand({ tabId }, 'Network.getResponseBody', { requestId }, function(
+    responseBody
+  ) {
+    log.network[requestId] = {
+      timestamp,
+      ...currentData,
+      response: { ...response, ...responseBody }
+    };
   });
 };
 
-const handleNetworkMessage = (tabId, message, params) => {
-  if (message == 'Network.requestWillBeSent') {
-    handleRequestWillBeSent(tabId, params);
-  } else if (message == 'Network.responseReceived') {
-    handleResponseReceived(tabId, params);
-  }
-};
-
-const onDebugEvent = (debuggeeId, message, params) => {
-  // only 1 event for console
-  debugger;
-  if (message === 'Console.messageAdded') {
-    handleConsoleMessage(debuggeeId.tabId, params.message);
-  } else {
-    handleNetworkMessage(debuggeeId.tabId, message, params);
+const onDebugEvent = (debuggeeId = {}, message, params = {}) => {
+  switch (message) {
+    case 'Console.messageAdded':
+      handleConsoleMessage(debuggeeId.tabId, params.message);
+      break;
+    case 'Network.requestWillBeSent':
+      handleRequestWillBeSent(debuggeeId.tabId, params);
+      break;
+    case 'Network.responseReceived':
+      handleResponseReceived(debuggeeId.tabId, params);
+    default:
+      break;
   }
 };
 
@@ -222,37 +230,16 @@ const onDebuggerDetach = (tab, reason) => {
     downloadConsoleReport(tabId);
     downloadHARReport(tabId);
   }
-  chrome.debugger.sendCommand(
-    {
-      tabId: tabId
-    },
-    'Network.disable'
-  );
-  chrome.debugger.sendCommand(
-    {
-      tabId: tabId
-    },
-    'Console.disable'
-  );
+  chrome.debugger.sendCommand({ tabId: tabId }, 'Network.disable');
+  chrome.debugger.sendCommand({ tabId: tabId }, 'Console.disable');
   logsByTab[tabId] = undefined;
 };
 
 const onUserAction = tab => {
   if (!logsByTab[tab.id]) {
-    chrome.debugger.attach(
-      {
-        tabId: tab.id
-      },
-      version,
-      onDebuggerAttach.bind(null, tab.id)
-    );
+    chrome.debugger.attach({ tabId: tab.id }, version, onDebuggerAttach.bind(null, tab.id));
   } else {
-    chrome.debugger.detach(
-      {
-        tabId: tab.id
-      },
-      onDebuggerDetach.bind(null, tab.id)
-    );
+    chrome.debugger.detach({ tabId: tab.id }, onDebuggerDetach.bind(null, tab.id));
   }
 };
 
